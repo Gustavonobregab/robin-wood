@@ -1,0 +1,27 @@
+{
+  "name": "@robin-wood/core",
+  "version": "0.0.1",
+  "description": "Core architecture - Pure, deterministic transformation pipeline for message optimization",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:golden": "jest tests/golden"
+  },
+  "keywords": [
+    "llm",
+    "optimization",
+    "context",
+    "pipeline"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  }
+}
