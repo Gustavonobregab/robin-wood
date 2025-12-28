@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(pnpm build:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm install:*)"
+    ]
+  }
+}
