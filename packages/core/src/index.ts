@@ -1,9 +1,10 @@
 import { ContentPart, Policy, Stage, StealResult, AuditEvent, StageMetrics, Report, Modality, AudioContent, TextContent, ImageContent, AccelerateAction, TrimSilenceAction, AudioActions, AudioPolicy, TextPolicy, ImagePolicy, Usage, Savings, EMPTY_USAGE, EMPTY_SAVINGS } from './types';
 import { AUDIO_STAGES } from './audio';
+import { TEXT_STAGES } from './text';
 export type { AudioContent, TextContent, ImageContent, ContentPart, Modality, AccelerateAction, TrimSilenceAction, AudioActions, AudioPolicy, TextPolicy, ImagePolicy, Policy, Usage, Savings, StageMetrics, Report, AuditEvent, StealResult };
 export { EMPTY_USAGE, EMPTY_SAVINGS };
 
-const STAGES: Stage<any>[] = [...AUDIO_STAGES];
+const STAGES: Stage<any>[] = [...AUDIO_STAGES, ...TEXT_STAGES];
 
 export async function steal(
   contents: ContentPart[],
