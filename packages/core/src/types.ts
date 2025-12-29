@@ -45,7 +45,7 @@ export interface AudioPolicy {
 
 export interface TextPolicy {
   enabled: boolean;
-  actions: Record<string, never>;
+  actions: TextActions;
 }
 
 export interface ImagePolicy {
@@ -57,6 +57,26 @@ export interface Policy {
   audio: AudioPolicy;
   text: TextPolicy;
   image: ImagePolicy;
+}
+
+export interface TrimWhitespaceAction {
+  enabled: boolean;
+  aggressive?: boolean;
+}
+
+export interface RemoveStopWordsAction {
+  enabled: boolean;
+  language?: 'en' | 'pt';
+}
+
+export interface TextActions {
+  trimWhitespace?: TrimWhitespaceAction;
+  removeStopWords?: RemoveStopWordsAction;
+}
+
+export interface TextPolicy {
+  enabled: boolean;
+  actions: TextActions;
 }
 
 // =============================================================================
