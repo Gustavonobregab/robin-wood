@@ -8,7 +8,9 @@
       "Bash(pnpm build:*)",
       "mcp__ide__getDiagnostics",
       "Bash(pnpm test:*)",
-      "Bash(pnpm install:*)"
+      "Bash(pnpm install:*)",
+      "Bash(pnpm link:*)",
+      "Bash(npm link:*)"
     ]
   }
 }
