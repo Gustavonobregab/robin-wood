@@ -13,4 +13,5 @@ export default steal;
 export { steal };
 export { AudioPipeline, TextPipeline, ImagePipeline };
 export type { AudioData, AudioResult, TextData, TextResult, ImageData, ImageResult };
+export { decodeAudio } from './decoder';
 
