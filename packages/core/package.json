@@ -1,9 +1,9 @@
 {
   "name": "robin-wood",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pure, deterministic transformation pipeline for audio, text, and image processing",
-  "main": "dist/v1/index.js",
-  "types": "dist/v1/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "author": "Gustavo Nobrega <gustavonobg@example.com>",
   "repository": {
     "type": "git",
@@ -20,9 +20,9 @@
   ],
   "exports": {
     ".": {
-      "import": "./dist/v1/index.js",
-      "require": "./dist/v1/index.js",
-      "types": "./dist/v1/index.d.ts"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
   "scripts": {
