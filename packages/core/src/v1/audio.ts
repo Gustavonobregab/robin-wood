@@ -1,102 +1,122 @@
 import { Pipeline, Operation } from './pipeline'
+import { PipelineResult, AudioDetails, calculateMetrics } from './types'
 
 export type AudioData = Buffer | ArrayBuffer | Uint8Array
+export type AudioResult = PipelineResult<AudioData, AudioDetails>
 
-export type AudioResult = {
-    data: AudioData
-    duration: number
-    sampleRate: number
-}
+const DEFAULT_SAMPLE_RATE = 44100
 
 export class AudioPipeline extends Pipeline<AudioData, AudioResult> {
-    constructor(data: AudioData, ops: Operation[] = []) {
-        // 1. SECURITY: Validate if dev didn't send a file with header (MP3/WAV) by mistake
-        AudioPipeline.validateInput(data);
+    private originalSize: number
+    private originalDuration: number
 
-        super('audio', data, ops, AudioPipeline.exec)
+    constructor(data: AudioData, ops: Operation[] = []) {
+        AudioPipeline.validateInput(data)
+        super('audio', data, ops, (d, o) => this.exec(d, o))
+        this.originalSize = getByteLength(data)
+        this.originalDuration = this.originalSize / 4 / DEFAULT_SAMPLE_RATE // Float32 = 4 bytes per sample
     }
 
     speedup(rate: number): AudioPipeline {
         if (rate <= 0 || rate > 4) throw new Error('Speed rate must be between 0 and 4')
-        return this.add('speedup', { rate }) as AudioPipeline
+        const pipeline = this.add('speedup', { rate }) as AudioPipeline
+        pipeline.originalSize = this.originalSize
+        pipeline.originalDuration = this.originalDuration
+        return pipeline
     }
 
     normalize(): AudioPipeline {
-        return this.add('normalize', {}) as AudioPipeline
+        const pipeline = this.add('normalize', {}) as AudioPipeline
+        pipeline.originalSize = this.originalSize
+        pipeline.originalDuration = this.originalDuration
+        return pipeline
     }
 
     removeSilence(thresholdDb = -40, minDurationMs = 100): AudioPipeline {
-        return this.add('removeSilence', { thresholdDb, minDurationMs }) as AudioPipeline
+        const pipeline = this.add('removeSilence', { thresholdDb, minDurationMs }) as AudioPipeline
+        pipeline.originalSize = this.originalSize
+        pipeline.originalDuration = this.originalDuration
+        return pipeline
     }
 
     volume(level: number): AudioPipeline {
         if (level < 0 || level > 2) throw new Error('Volume level must be between 0 and 2')
-        return this.add('volume', { level }) as AudioPipeline
+        const pipeline = this.add('volume', { level }) as AudioPipeline
+        pipeline.originalSize = this.originalSize
+        pipeline.originalDuration = this.originalDuration
+        return pipeline
     }
 
-    // --- Validation Logic (Guard Clause) ---
     private static validateInput(data: AudioData): void {
-        let buffer: Buffer;
+        let buffer: Buffer
 
-        // FIX HERE: Separate checks so TypeScript doesn't get lost in types
         if (Buffer.isBuffer(data)) {
-            buffer = data;
+            buffer = data
         } else if (data instanceof Uint8Array) {
-            buffer = Buffer.from(data);
+            buffer = Buffer.from(data)
         } else if (data instanceof ArrayBuffer) {
-            buffer = Buffer.from(data);
+            buffer = Buffer.from(data)
         } else {
-            return; // Unknown type, let it pass (will likely fail later)
+            return
         }
 
-        // If buffer is too small, don't even try to validate
-        if (buffer.length < 12) return;
+        if (buffer.length < 12) return
 
-        // Check WAV Signature (RIFF....WAVE)
-        const isRiff = buffer.toString('ascii', 0, 4) === 'RIFF';
-        const isWave = buffer.toString('ascii', 8, 12) === 'WAVE';
+        const isRiff = buffer.toString('ascii', 0, 4) === 'RIFF'
+        const isWave = buffer.toString('ascii', 8, 12) === 'WAVE'
 
         if (isRiff && isWave) {
             throw new Error(
                 "[RobinWood] Error: You passed a raw WAV file (with header). " +
                 "This library expects decoded audio data (Float32 PCM Array). " +
                 "Please decode the file (remove the header and convert to float) before passing it to the pipeline."
-            );
+            )
         }
 
-        // Check MP4/M4A Signature (....ftyp)
-        const isFtyp = buffer.toString('ascii', 4, 8) === 'ftyp';
+        const isFtyp = buffer.toString('ascii', 4, 8) === 'ftyp'
         if (isFtyp) {
             throw new Error(
                 "[RobinWood] Error: You passed an MP4/AAC file. " +
                 "This library does not decode compressed audio. " +
                 "Please convert to RAW PCM (Float32) before using."
-            );
+            )
         }
 
-        // Check MP3 Signature (ID3)
-        const isId3 = buffer.toString('ascii', 0, 3) === 'ID3';
+        const isId3 = buffer.toString('ascii', 0, 3) === 'ID3'
         if (isId3) {
             throw new Error(
                 "[RobinWood] Error: You passed an MP3 file. " +
                 "This library does not decode compressed audio. " +
                 "Please convert to RAW PCM (Float32) before using."
-            );
+            )
         }
     }
 
-    private static async exec(data: AudioData, ops: Operation[]): Promise<AudioResult> {
+    private async exec(data: AudioData, ops: Operation[]): Promise<AudioResult> {
         let result = data
-        const sampleRate = 44100
+        const appliedOps: string[] = []
 
         for (const { name, params } of ops) {
             result = await AudioPipeline.run(result, name, params)
+            appliedOps.push(name)
         }
 
         const float32 = toFloat32Array(result)
-        const duration = float32.length / sampleRate
+        const finalSize = getByteLength(result)
+        const finalDuration = float32.length / DEFAULT_SAMPLE_RATE
+        const silenceRemoved = Math.max(0, this.originalDuration - finalDuration)
 
-        return { data: result, duration, sampleRate }
+        return {
+            data: result,
+            metrics: calculateMetrics(this.originalSize, finalSize),
+            details: {
+                duration: Math.round(finalDuration * 100) / 100,
+                sampleRate: DEFAULT_SAMPLE_RATE,
+                originalDuration: Math.round(this.originalDuration * 100) / 100,
+                silenceRemoved: Math.round(silenceRemoved * 100) / 100
+            },
+            operations: appliedOps
+        }
     }
 
     private static async run(data: AudioData, op: string, params: any): Promise<AudioData> {
@@ -116,6 +136,13 @@ export class AudioPipeline extends Pipeline<AudioData, AudioResult> {
 }
 
 // ========== Helpers ==========
+
+function getByteLength(data: AudioData): number {
+    if (data instanceof Buffer) return data.length
+    if (data instanceof ArrayBuffer) return data.byteLength
+    if (data instanceof Uint8Array) return data.byteLength
+    return 0
+}
 
 function toFloat32Array(data: AudioData): Float32Array {
     if (data instanceof Buffer) {
@@ -138,7 +165,6 @@ function dbToAmplitude(db: number): number {
     const clampedDb = Math.max(-60, Math.min(0, db))
     return Math.pow(10, clampedDb / 20)
 }
-
 
 async function speedup(data: AudioData, rate: number): Promise<AudioData> {
     const audioData = toFloat32Array(data)
@@ -186,11 +212,10 @@ async function removeSilence(
     minDurationMs: number
 ): Promise<AudioData> {
     const audioData = toFloat32Array(data)
-    const sampleRate = 44100
+    const sampleRate = DEFAULT_SAMPLE_RATE
     const threshold = dbToAmplitude(thresholdDb)
     const minSamples = Math.floor((minDurationMs / 1000) * sampleRate)
 
-    // Detect silence ranges
     const silentRanges: Array<{ start: number; end: number }> = []
     let startSilence = -1
     let silenceCount = 0
@@ -216,13 +241,11 @@ async function removeSilence(
 
     if (silentRanges.length === 0) return data
 
-    // Calculate new length
     let totalSamples = audioData.length
     for (const range of silentRanges) {
         totalSamples -= range.end - range.start
     }
 
-    // Build new audio without silence
     const newAudio = new Float32Array(totalSamples)
     let newIndex = 0
     let lastEnd = 0

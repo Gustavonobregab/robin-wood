@@ -1,6 +1,6 @@
 {
   "name": "robin-wood",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Pure, deterministic transformation pipeline for audio, text, and image processing",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

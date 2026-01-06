@@ -1,16 +1,28 @@
-import { AudioPipeline, AudioData, AudioResult } from './audio';
-import { TextPipeline, TextData, TextResult } from './text';
-import { ImagePipeline, ImageData, ImageResult } from './image';
+import { AudioPipeline, AudioData, AudioResult } from './audio'
+import { TextPipeline, TextData, TextResult } from './text'
+import { ImagePipeline, ImageData, ImageResult } from './image'
+import { Metrics, PipelineResult, AudioDetails, TextDetails, ImageDetails } from './types'
 
 const steal = {
   audio: (data: AudioData) => new AudioPipeline(data),
   text: (data: TextData) => new TextPipeline(data),
   image: (data: ImageData) => new ImagePipeline(data),
-};
+}
 
-export default steal;
+export default steal
 
-export { steal };
-export { AudioPipeline, TextPipeline, ImagePipeline };
-export type { AudioData, AudioResult, TextData, TextResult, ImageData, ImageResult };
-
+export { steal }
+export { AudioPipeline, TextPipeline, ImagePipeline }
+export type {
+  AudioData,
+  AudioResult,
+  TextData,
+  TextResult,
+  ImageData,
+  ImageResult,
+  Metrics,
+  PipelineResult,
+  AudioDetails,
+  TextDetails,
+  ImageDetails
+}
