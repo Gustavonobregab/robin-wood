@@ -47,6 +47,9 @@
   "engines": {
     "node": ">=16.0.0"
   },
+  "dependencies": {
+    "@toon-format/toon": "^1.0.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",

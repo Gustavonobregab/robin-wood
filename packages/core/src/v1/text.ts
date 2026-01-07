@@ -1,5 +1,6 @@
 import { Pipeline, Operation } from './pipeline'
 import { PipelineResult, TextDetails, calculateMetrics } from './types'
+import { encode as toonEncode } from '@toon-format/toon'
 
 export type TextData = string
 export type TextResult = PipelineResult<string, TextDetails>
@@ -26,6 +27,12 @@ export class TextPipeline extends Pipeline<TextData, TextResult> {
 
   compress(algo: 'gzip' | 'brotli' = 'gzip'): TextPipeline {
     const pipeline = this.add('compress', { algo }) as TextPipeline
+    pipeline.originalSize = this.originalSize
+    return pipeline
+  }
+
+  jsonToToon(): TextPipeline {
+    const pipeline = this.add('jsonToToon', {}) as TextPipeline
     pipeline.originalSize = this.originalSize
     return pipeline
   }
@@ -60,6 +67,8 @@ export class TextPipeline extends Pipeline<TextData, TextResult> {
         return minify(data)
       case 'compress':
         return compress(data, params.algo)
+      case 'jsonToToon':
+        return jsonToToon(data)
       default:
         throw new Error(`Unknown operation: ${op}`)
     }
@@ -94,4 +103,75 @@ async function compress(data: TextData, algo: string): Promise<TextData> {
   }
 
   return data
+}
+
+function findJsonBlocks(text: string): { start: number; end: number; json: string }[] {
+  const blocks: { start: number; end: number; json: string }[] = []
+  let i = 0
+
+  while (i < text.length) {
+    if (text[i] === '{' || text[i] === '[') {
+      const startChar = text[i]
+      const endChar = startChar === '{' ? '}' : ']'
+      let depth = 1
+      let j = i + 1
+      let inString = false
+      let escape = false
+
+      while (j < text.length && depth > 0) {
+        const char = text[j]
+
+        if (escape) {
+          escape = false
+        } else if (char === '\\') {
+          escape = true
+        } else if (char === '"') {
+          inString = !inString
+        } else if (!inString) {
+          if (char === startChar) {
+            depth++
+          } else if (char === endChar) {
+            depth--
+          }
+        }
+        j++
+      }
+
+      if (depth === 0) {
+        const jsonCandidate = text.slice(i, j)
+        try {
+          JSON.parse(jsonCandidate)
+          blocks.push({ start: i, end: j, json: jsonCandidate })
+          i = j
+          continue
+        } catch {
+          // Not valid JSON, continue scanning
+        }
+      }
+    }
+    i++
+  }
+
+  return blocks
+}
+
+async function jsonToToon(data: TextData): Promise<TextData> {
+  const jsonBlocks = findJsonBlocks(data)
+
+  if (jsonBlocks.length === 0) {
+    return data
+  }
+
+  let result = data
+  for (let i = jsonBlocks.length - 1; i >= 0; i--) {
+    const block = jsonBlocks[i]
+    try {
+      const parsed = JSON.parse(block.json)
+      const toon = toonEncode(parsed)
+      result = result.slice(0, block.start) + toon + result.slice(block.end)
+    } catch {
+    }
+  }
+
+  return result
 }
