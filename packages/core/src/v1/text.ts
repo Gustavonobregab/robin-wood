@@ -16,19 +16,29 @@ export class TextPipeline extends Pipeline<TextData, TextResult> {
         this.originalSize = data.length
     }
 
+    /**
+     * Remove espaços excessivos, quebras de linha e cola pontuações.
+     * Ex: "Olá , mundo !" -> "Olá, mundo!"
+     */
     trim(): TextPipeline {
         const pipeline = this.add('trim', {}) as TextPipeline
         pipeline.originalSize = this.originalSize
         return pipeline
     }
 
-    // Novo método para reduzir tokens baseado na língua
+    /**
+     * Substitui palavras por abreviações para economizar tokens.
+     * Lang: 'EN' (Inglês) ou 'PT' (Português).
+     */
     shorten(lang: 'EN' | 'PT' = 'EN'): TextPipeline {
         const pipeline = this.add('shorten', { lang }) as TextPipeline
         pipeline.originalSize = this.originalSize
         return pipeline
     }
 
+    /**
+     * Compressão agressiva: remove todas as quebras de linha e formatação.
+     */
     minify(): TextPipeline {
         const pipeline = this.add('minify', {}) as TextPipeline
         pipeline.originalSize = this.originalSize
@@ -92,44 +102,39 @@ export class TextPipeline extends Pipeline<TextData, TextResult> {
 // ==========================================
 
 async function trim(data: TextData): Promise<TextData> {
-    return data.replace(/\s+/g, ' ').trim()
+    return data
+        // 1. Transforma quebras de linha e tabs em espaço
+        .replace(/[\r\n\t]+/g, ' ')
+        // 2. Remove múltiplos espaços ("  " -> " ")
+        .replace(/\s+/g, ' ')
+        // 3. Remove espaço ANTES de pontuação ("Ola , mundo !" -> "Ola, mundo!")
+        .replace(/\s+([,.:;!?])/g, '$1')
+        // 4. Remove espaços do início e fim
+        .trim()
 }
 
 async function shorten(data: TextData, lang: 'EN' | 'PT'): Promise<TextData> {
-    // Seleciona o dicionário correto
     const map = lang === 'PT' ? SHORTEN_MAP_PT : SHORTEN_MAP_EN;
     let result = data;
 
-    // Itera sobre as palavras do mapa
     for (const [original, replacement] of Object.entries(map)) {
-        // Regex segura:
-        // \b = garante palavra inteira (não substitui 'parar' para 'prar')
-        // gi = global + case insensitive
+        // Regex com Word Boundary (\b) para não quebrar palavras
         const regex = new RegExp(`\\b${original}\\b`, 'gi');
-
-        // Substitui
         result = result.replace(regex, replacement);
     }
-
     return result;
 }
 
 async function minify(data: TextData): Promise<TextData> {
-    // Remove multiple newlines, extra spaces, trim each line
-    return data
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .join('\n')
-        .replace(/\n{2,}/g, '\n')
+    // Minify faz o mesmo que trim, mas garante remoção total de quebras de linha
+    // (A lógica foi unificada no trim acima para consistência, mas mantemos o minify
+    // caso queira adicionar lógica extra de compressão no futuro)
+    return trim(data);
 }
 
 async function compress(data: TextData, algo: string): Promise<TextData> {
     if (algo === 'gzip' || algo === 'brotli') {
-        return data
-            .replace(/\s+/g, ' ')
-            .replace(/\s*([,.:;!?])\s*/g, '$1 ')
-            .trim()
+        return trim(data);
     }
     return data
 }
@@ -137,7 +142,6 @@ async function compress(data: TextData, algo: string): Promise<TextData> {
 function findJsonBlocks(text: string): { start: number; end: number; json: string }[] {
     const blocks: { start: number; end: number; json: string }[] = []
     let i = 0
-
     while (i < text.length) {
         if (text[i] === '{' || text[i] === '[') {
             const startChar = text[i]
@@ -146,26 +150,17 @@ function findJsonBlocks(text: string): { start: number; end: number; json: strin
             let j = i + 1
             let inString = false
             let escape = false
-
             while (j < text.length && depth > 0) {
                 const char = text[j]
-
-                if (escape) {
-                    escape = false
-                } else if (char === '\\') {
-                    escape = true
-                } else if (char === '"') {
-                    inString = !inString
-                } else if (!inString) {
-                    if (char === startChar) {
-                        depth++
-                    } else if (char === endChar) {
-                        depth--
-                    }
+                if (escape) escape = false
+                else if (char === '\\') escape = true
+                else if (char === '"') inString = !inString
+                else if (!inString) {
+                    if (char === startChar) depth++
+                    else if (char === endChar) depth--
                 }
                 j++
             }
-
             if (depth === 0) {
                 const jsonCandidate = text.slice(i, j)
                 try {
@@ -173,20 +168,17 @@ function findJsonBlocks(text: string): { start: number; end: number; json: strin
                     blocks.push({ start: i, end: j, json: jsonCandidate })
                     i = j
                     continue
-                } catch {
-                }
+                } catch { }
             }
         }
         i++
     }
-
     return blocks
 }
 
 async function jsonToToon(data: TextData): Promise<TextData> {
     const jsonBlocks = findJsonBlocks(data)
     if (jsonBlocks.length === 0) return data
-
     let result = data
     for (let i = jsonBlocks.length - 1; i >= 0; i--) {
         const block = jsonBlocks[i]
@@ -194,9 +186,7 @@ async function jsonToToon(data: TextData): Promise<TextData> {
             const parsed = JSON.parse(block.json)
             const toon = toonEncode(parsed)
             result = result.slice(0, block.start) + toon + result.slice(block.end)
-        } catch {
-        }
+        } catch { }
     }
-
     return result
 }
