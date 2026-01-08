@@ -1,22 +1,55 @@
 {
-  "name": "@robin-wood/core",
-  "version": "0.0.1",
-  "description": "Core architecture - Pure, deterministic transformation pipeline for message optimization",
+  "name": "robin-wood",
+  "version": "0.2.0",
+  "description": "Pure, deterministic transformation pipeline for audio, text, and image processing",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "author": "Gustavo Nobrega <gustavonobg@example.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gustavonobg/robin-wood.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gustavonobg/robin-wood/issues"
+  },
+  "homepage": "https://github.com/gustavonobg/robin-wood#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "build": "rimraf dist && tsc",
+    "prepublishOnly": "npm run build",
     "test": "jest",
     "test:unit": "jest tests/unit",
     "test:golden": "jest tests/golden"
   },
   "keywords": [
-    "llm",
+    "audio",
+    "text",
+    "image",
+    "processing",
+    "pipeline",
+    "transformation",
     "optimization",
-    "context",
-    "pipeline"
+    "llm",
+    "context"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@toon-format/toon": "^1.0.0"
+  },
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.28",
     "@types/jest": "^29.5.0",

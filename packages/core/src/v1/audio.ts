@@ -1,46 +1,68 @@
 import { Pipeline, Operation } from './pipeline';
 import ffmpeg from 'fluent-ffmpeg';
 import { PassThrough, Readable } from 'stream';
+import { PipelineResult, AudioDetails, calculateMetrics } from './types';
 
 export type AudioData = Buffer | ArrayBuffer | Uint8Array;
+export type AudioResult = PipelineResult<AudioData, AudioDetails>;
 
-export type AudioResult = {
-    data: AudioData
-    duration: number
-    sampleRate: number
-}
+const DEFAULT_SAMPLE_RATE = 44100;
 
 export class AudioPipeline extends Pipeline<AudioData, AudioResult> {
+    private originalSize: number;
+    private originalDuration: number;
+
     constructor(data: AudioData, ops: Operation[] = []) {
-        // 1. SECURITY: Validate input format
+        // 1. SECURITY: Validate input format (from conversor)
         AudioPipeline.validateInput(data);
-        super('audio', data, ops, AudioPipeline.exec)
+        
+        // 2. Setup Metrics (from main)
+        // We use an arrow function wrapper for exec to bind 'this' correctly for metrics
+        super('audio', data, ops, (d, o) => this.exec(d, o));
+        
+        this.originalSize = getByteLength(data);
+        this.originalDuration = this.originalSize / 4 / DEFAULT_SAMPLE_RATE; // Float32 = 4 bytes per sample
     }
 
     speedup(rate: number): AudioPipeline {
-        // FFmpeg 'atempo' filter limits are technically 0.5 to 2.0,
-        // but we handle chaining in the implementation, so we allow a wider range here.
+        // Validation from 'conversor' (allows wider range for ffmpeg)
         if (rate < 0.25 || rate > 100) throw new Error('Speed rate must be between 0.25 and 100');
-        return this.add('speedup', { rate }) as AudioPipeline
+        
+        // Pipeline chaining from 'main' (preserves metrics)
+        const pipeline = this.add('speedup', { rate }) as AudioPipeline;
+        pipeline.originalSize = this.originalSize;
+        pipeline.originalDuration = this.originalDuration;
+        return pipeline;
     }
 
     normalize(): AudioPipeline {
-        return this.add('normalize', {}) as AudioPipeline
+        const pipeline = this.add('normalize', {}) as AudioPipeline;
+        pipeline.originalSize = this.originalSize;
+        pipeline.originalDuration = this.originalDuration;
+        return pipeline;
     }
 
     removeSilence(thresholdDb = -40, minDurationMs = 100): AudioPipeline {
-        return this.add('removeSilence', { thresholdDb, minDurationMs }) as AudioPipeline
+        const pipeline = this.add('removeSilence', { thresholdDb, minDurationMs }) as AudioPipeline;
+        pipeline.originalSize = this.originalSize;
+        pipeline.originalDuration = this.originalDuration;
+        return pipeline;
     }
 
     volume(level: number): AudioPipeline {
         if (level < 0 || level > 2) throw new Error('Volume level must be between 0 and 2');
-        return this.add('volume', { level }) as AudioPipeline
+        
+        const pipeline = this.add('volume', { level }) as AudioPipeline;
+        pipeline.originalSize = this.originalSize;
+        pipeline.originalDuration = this.originalDuration;
+        return pipeline;
     }
 
-    // --- Validation Logic ---
+    // --- Validation Logic (Merged) ---
     private static validateInput(data: AudioData): void {
         let buffer: Buffer;
 
+        // Uses the stricter type check from 'conversor' to fix TS issues
         if (Buffer.isBuffer(data)) {
             buffer = data;
         } else if (data instanceof Uint8Array) {
@@ -56,34 +78,60 @@ export class AudioPipeline extends Pipeline<AudioData, AudioResult> {
         const isRiff = buffer.toString('ascii', 0, 4) === 'RIFF';
         const isWave = buffer.toString('ascii', 8, 12) === 'WAVE';
         if (isRiff && isWave) {
-            throw new Error("[RobinWood] Error: Raw WAV file detected. Please decode to Float32 PCM first.");
+            throw new Error(
+                "[RobinWood] Error: Raw WAV file detected. Please decode to Float32 PCM first."
+            );
         }
 
         const isFtyp = buffer.toString('ascii', 4, 8) === 'ftyp';
         if (isFtyp) {
-            throw new Error("[RobinWood] Error: MP4/AAC detected. Please decode audio first.");
+            throw new Error(
+                "[RobinWood] Error: MP4/AAC detected. Please decode audio first."
+            );
+        }
+
+        // MP3 Check from 'main' (good to keep)
+        const isId3 = buffer.toString('ascii', 0, 3) === 'ID3';
+        if (isId3) {
+            throw new Error(
+                 "[RobinWood] Error: MP3 detected. Please decode audio first."
+            );
         }
     }
 
-    private static async exec(data: AudioData, ops: Operation[]): Promise<AudioResult> {
+    // --- Execution Logic (From Main - Rich Metrics) ---
+    private async exec(data: AudioData, ops: Operation[]): Promise<AudioResult> {
         let result = data;
-        const sampleRate = 44100;
+        const appliedOps: string[] = [];
 
         for (const { name, params } of ops) {
-            // result is updated step by step
+            // Uses static run which switches on operation name
             result = await AudioPipeline.run(result, name, params);
+            appliedOps.push(name);
         }
 
         const float32 = toFloat32Array(result);
-        const duration = float32.length / sampleRate;
+        const finalSize = getByteLength(result);
+        const finalDuration = float32.length / DEFAULT_SAMPLE_RATE;
+        const silenceRemoved = Math.max(0, this.originalDuration - finalDuration);
 
-        return { data: result, duration, sampleRate };
+        return {
+            data: result,
+            metrics: calculateMetrics(this.originalSize, finalSize),
+            details: {
+                duration: Math.round(finalDuration * 100) / 100,
+                sampleRate: DEFAULT_SAMPLE_RATE,
+                originalDuration: Math.round(this.originalDuration * 100) / 100,
+                silenceRemoved: Math.round(silenceRemoved * 100) / 100
+            },
+            operations: appliedOps
+        };
     }
 
     private static async run(data: AudioData, op: string, params: any): Promise<AudioData> {
         switch (op) {
             case 'speedup':
-                // NOW USES FFMPEG
+                // NOW USES FFMPEG (from conversor)
                 return speedupWithFFmpeg(data, params.rate);
             case 'normalize':
                 return normalize(data);
@@ -98,6 +146,13 @@ export class AudioPipeline extends Pipeline<AudioData, AudioResult> {
 }
 
 // ========== Helpers ==========
+
+function getByteLength(data: AudioData): number {
+    if (data instanceof Buffer) return data.length;
+    if (data instanceof ArrayBuffer) return data.byteLength;
+    if (data instanceof Uint8Array) return data.byteLength;
+    return 0;
+}
 
 function toFloat32Array(data: AudioData): Float32Array {
     if (data instanceof Buffer) {
@@ -127,16 +182,12 @@ function dbToAmplitude(db: number): number {
  * 🚀 NEW: High Quality Speedup using FFmpeg 'atempo' filter.
  * This preserves pitch (no chipmunk effect) and avoids aliasing noise.
  */
-/**
- * 🚀 NEW: High Quality Speedup using FFmpeg 'atempo' filter.
- * This preserves pitch (no chipmunk effect) and avoids aliasing noise.
- */
 async function speedupWithFFmpeg(data: AudioData, rate: number): Promise<AudioData> {
     return new Promise((resolve, reject) => {
         // 1. Convert Buffer to Readable Stream
         let buffer: Buffer;
 
-        // CORREÇÃO: Resolvemos os tipos separadamente para evitar o erro TS2769
+        // Fixed type checking to avoid TS errors
         if (Buffer.isBuffer(data)) {
             buffer = data;
         } else if (data instanceof Uint8Array) {
@@ -151,20 +202,13 @@ async function speedupWithFFmpeg(data: AudioData, rate: number): Promise<AudioDa
         inputStream.push(buffer);
         inputStream.push(null); // Signal end of stream
 
-        // 2. Prepare Output Stream (to collect results)
+        // 2. Prepare Output Stream
         const outputStream = new PassThrough();
         const chunks: Buffer[] = [];
 
         outputStream.on('data', (chunk) => chunks.push(chunk));
-        outputStream.on('end', () => {
-            const resultBuffer = Buffer.concat(chunks);
-            resolve(resultBuffer);
-        });
-        outputStream.on('error', (err) => reject(err));
-
-        // 3. Construct FFmpeg Filters
-        // The 'atempo' filter is limited to [0.5, 2.0].
-        // For higher rates (e.g., 4.0), we must chain them: "atempo=2.0,atempo=2.0"
+        
+        // 3. Construct Filters
         const filters: string[] = [];
         let remainingRate = rate;
 
@@ -176,22 +220,26 @@ async function speedupWithFFmpeg(data: AudioData, rate: number): Promise<AudioDa
             filters.push('atempo=0.5');
             remainingRate /= 0.5;
         }
-        // Push the remainder (if it's not exactly 1.0)
         if (remainingRate !== 1.0) {
             filters.push(`atempo=${remainingRate}`);
         }
 
         // 4. Run FFmpeg Pipeline
         ffmpeg(inputStream)
-            // Input settings: We must tell FFmpeg exactly what this raw stream is
             .inputFormat('f32le')
             .audioFrequency(44100)
             .audioChannels(1)
-            // Processing
             .audioFilters(filters)
-            // Output settings
             .format('f32le')
             .audioCodec('pcm_f32le')
+            .on('error', (err) => {
+                 if (err.message.includes('Output stream closed')) return;
+                 reject(err);
+            })
+            .on('end', () => {
+                const resultBuffer = Buffer.concat(chunks);
+                resolve(resultBuffer);
+            })
             .pipe(outputStream, { end: true });
     });
 }
@@ -219,7 +267,7 @@ async function removeSilence(
     minDurationMs: number
 ): Promise<AudioData> {
     const audioData = toFloat32Array(data);
-    const sampleRate = 44100;
+    const sampleRate = DEFAULT_SAMPLE_RATE;
     const threshold = dbToAmplitude(thresholdDb);
     const minSamples = Math.floor((minDurationMs / 1000) * sampleRate);
 

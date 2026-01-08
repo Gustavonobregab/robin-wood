@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm whoami:*)",
+      "Bash(npm config set:*)",
+      "Bash(npm login:*)",
+      "Bash(npm publish --access public)",
+      "Bash(npm publish:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(npm run build:*)",
+      "Bash(node -e:*)"
+    ]
+  }
+}
