@@ -20,10 +20,16 @@ function createSilence(durationSec: number, sampleRate = 44100): Buffer {
 }
 
 function getPeak(buffer: Buffer): number {
-  const float32 = new Float32Array(buffer.buffer, buffer.byteOffset, buffer.length / 4);
-  let max = 0;
-  for (let val of float32) if (Math.abs(val) > max) max = Math.abs(val);
-  return max;
+    const float32 = new Float32Array(buffer.buffer, buffer.byteOffset, buffer.length / 4);
+    let max = 0;
+
+    // FIX: Use standard for-loop instead of iterator (faster & compatible with ES5)
+    for (let i = 0; i < float32.length; i++) {
+        const abs = Math.abs(float32[i]);
+        if (abs > max) max = abs;
+    }
+
+    return max;
 }
 
 // ==========================================
