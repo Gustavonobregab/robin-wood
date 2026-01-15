@@ -1,3 +1,5 @@
+import { isInitialized } from './config';
+
 export type Operation = {
   name: string;
   params: Record<string, unknown>;
@@ -29,6 +31,11 @@ export abstract class Pipeline<TData, TResult> {
   }
 
   async run(): Promise<TResult> {
+
+    if (!isInitialized()) {
+      throw new Error('[RobinWood] Not initialized. Call steal.init({ apiKey }) first.');
+    }
+    
     return this.executor(this.data, this.ops);
   }
 }

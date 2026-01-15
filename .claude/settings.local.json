@@ -10,7 +10,15 @@
       "Bash(pnpm test:*)",
       "Bash(pnpm install:*)",
       "Bash(pnpm link:*)",
-      "Bash(npm link:*)"
+      "Bash(npm link:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:toonformat.dev)",
+      "Bash(npx ts-node:*)",
+      "Bash(cat:*)",
+      "Bash(bun install:*)",
+      "Bash(bun run:*)"
     ]
   }
 }
